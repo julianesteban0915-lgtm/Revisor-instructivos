@@ -7,8 +7,6 @@ import requests
 
 # ----------------------------------------------------------------------
 # Revisor de Instructivos de Embalaje — Garces Fruit
-# App web: el usuario sube el PDF del instructivo y obtiene la revision
-# contra el kit base maestro. Se ignoran las columnas Observacion y Pallet.
 # ----------------------------------------------------------------------
 
 st.set_page_config(page_title="Revisor de Instructivos", page_icon="🍒", layout="centered")
@@ -30,7 +28,6 @@ GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/julianesteban0915-lgtm/Rev
 
 @st.cache_data(show_spinner="Cargando kit base desde GitHub...", ttl=300)
 def load_base_github():
-    """Carga el Excel de kit base directamente desde GitHub."""
     try:
         r = requests.get(GITHUB_EXCEL_URL, timeout=15)
         if r.status_code == 200:
@@ -129,10 +126,8 @@ def extract_kits(pdf_bytes):
                         if not ev or len(ev) < 3:
                             continue
                         emb = code(r[iB]) if iB < len(r) else ""
-                        # Etiqueta: tomar solo el primer token para evitar errores de parseo
                         eti_raw = norm(r[iT]) if 0 <= iT < len(r) else ""
                         eti = eti_raw.split()[0] if eti_raw else ""
-                        # Deduplicar: mismo envase+embalaje+etiqueta no repetir
                         key = f"{ev}|{emb}|{eti}"
                         if key in seen_ce:
                             continue
