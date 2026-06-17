@@ -123,14 +123,24 @@ def extract_kits(pdf_bytes):
                     iT = hdr.index("ETIQUETA") if "ETIQUETA" in hdr else -1
                     iCaj = hdr.index("CAJAS/PALLET") if "CAJAS/PALLET" in hdr else -1
                     iCal = hdr.index("MIXCALIBRES") if "MIXCALIBRES" in hdr else -1
+                    seen_ce = set()
                     for r in t[2:]:
                         ev = code(r[iE]) if iE < len(r) else ""
                         if not ev or len(ev) < 3:
                             continue
+                        emb = code(r[iB]) if iB < len(r) else ""
+                        # Etiqueta: tomar solo el primer token para evitar errores de parseo
+                        eti_raw = norm(r[iT]) if 0 <= iT < len(r) else ""
+                        eti = eti_raw.split()[0] if eti_raw else ""
+                        # Deduplicar: mismo envase+embalaje+etiqueta no repetir
+                        key = f"{ev}|{emb}|{eti}"
+                        if key in seen_ce:
+                            continue
+                        seen_ce.add(key)
                         embalaje_comercial.append({
                             "envase": ev,
-                            "embalaje": code(r[iB]) if iB < len(r) else "",
-                            "etiqueta": norm(r[iT]) if 0 <= iT < len(r) else "",
+                            "embalaje": emb,
+                            "etiqueta": eti,
                             "calibre": norm(r[iCal]) if 0 <= iCal < len(r) else "",
                             "cajas": numv(r[iCaj]) if 0 <= iCaj < len(r) else None,
                         })
