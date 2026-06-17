@@ -26,7 +26,7 @@ def numv(s):
     return int(d) if d else None
 
 # ---------------- kit base desde GitHub ----------------
-GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/julianesteban0915-lgtm/Revisor-instructivos/main/KIT_EMBALAJE_TODOS-1.xlsx"
+GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/julianesteban0915-lgtm/Revisor-instructivos/main/KIT_EMBALAJE_TODOS.xlsx"
 
 @st.cache_data(show_spinner="Cargando kit base desde GitHub...", ttl=300)
 def load_base_github():
@@ -187,7 +187,7 @@ with st.expander("⚙️ Kit base maestro", expanded=False):
 
     st.divider()
     st.markdown("**¿Actualizaste el Excel?** Súbelo a GitHub:")
-    st.code("github.com/julianesteban0915-lgtm/Revisor-instructivos → Subir archivo → KIT_EMBALAJE_TODOS-1.xlsx", language=None)
+    st.code("github.com/julianesteban0915-lgtm/Revisor-instructivos → Subir archivo → KIT_EMBALAJE_TODOS.xlsx", language=None)
 
     st.markdown("**O reemplaza manualmente solo para esta sesión:**")
     up_base = st.file_uploader("Subir Excel kit base (solo esta sesión)", type=["xlsx", "xlsm", "xls"], key="base")
