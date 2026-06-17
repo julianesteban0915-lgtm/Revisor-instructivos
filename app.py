@@ -26,7 +26,7 @@ def numv(s):
     return int(d) if d else None
 
 # ---------------- kit base desde GitHub ----------------
-GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/julianesteban0915-lgtm/Revisor-instructivos/main/KIT_EMBALAJE_TODOS.xlsx"
+GITHUB_EXCEL_URL = "https://raw.githubusercontent.com/julianesteban0915-lgtm/Revisor-instructivos/main/KIT_EMBALAJE_TODOS-1.xlsx"
 
 @st.cache_data(show_spinner="Cargando kit base desde GitHub...", ttl=300)
 def load_base_github():
@@ -85,8 +85,15 @@ def extract_kits(pdf_bytes):
             for t in page.extract_tables():
                 if len(t) < 2:
                     continue
+                # Solo procesar tabla ORDEN ESPECIFICA — ignorar EMBALAJE COMERCIAL y otras
+                titulo = norm(str(t[0][0]) if t[0] else "").replace(" ", "")
+                if "EMBALAJE COMERCIAL" in norm(str(t[0])):
+                    continue
                 hdr = [norm(c).replace(" ", "") for c in t[1]]
                 if "ENVASE" in hdr and "EMBALAJE" in hdr and "ETIQUETA" in hdr:
+                    # Verificar que no sea tabla de embalaje comercial por sus headers
+                    if "MIXCALIBRES" in hdr or "CALIBREETIQUETA" in hdr:
+                        continue
                     iE, iB, iT = hdr.index("ENVASE"), hdr.index("EMBALAJE"), hdr.index("ETIQUETA")
                     iCaj = hdr.index("CAJAS/PALLET") if "CAJAS/PALLET" in hdr else -1
                     iCal = hdr.index("CALIBRES") if "CALIBRES" in hdr else (
@@ -94,6 +101,9 @@ def extract_kits(pdf_bytes):
                     for r in t[2:]:
                         ev = code(r[iE]) if iE < len(r) else ""
                         if not ev:
+                            continue
+                        # Filtrar códigos que no parecen envases válidos (ej: NAGR, COM-A)
+                        if len(ev) < 4 or not ev[0].isalpha() or ev in ("NAGR","NABPV","NACP"):
                             continue
                         kits.append({
                             "envase": ev,
@@ -177,7 +187,7 @@ with st.expander("⚙️ Kit base maestro", expanded=False):
 
     st.divider()
     st.markdown("**¿Actualizaste el Excel?** Súbelo a GitHub:")
-    st.code("github.com/julianesteban0915-lgtm/Revisor-instructivos → Subir archivo → KIT_EMBALAJE_TODOS.xlsx", language=None)
+    st.code("github.com/julianesteban0915-lgtm/Revisor-instructivos → Subir archivo → KIT_EMBALAJE_TODOS-1.xlsx", language=None)
 
     st.markdown("**O reemplaza manualmente solo para esta sesión:**")
     up_base = st.file_uploader("Subir Excel kit base (solo esta sesión)", type=["xlsx", "xlsm", "xls"], key="base")
