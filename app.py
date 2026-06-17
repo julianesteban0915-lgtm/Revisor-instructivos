@@ -79,40 +79,63 @@ def load_base(file_bytes):
 
 # ---------------- instructivo PDF ----------------
 def extract_kits(pdf_bytes):
-    kits = []
+    """Retorna dict con 'orden_especifica' y 'embalaje_comercial' como listas separadas."""
+    orden_especifica = []
+    embalaje_comercial = []
+
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
             for t in page.extract_tables():
                 if len(t) < 2:
                     continue
-                # Solo procesar tabla ORDEN ESPECIFICA — ignorar EMBALAJE COMERCIAL y otras
-                titulo = norm(str(t[0][0]) if t[0] else "").replace(" ", "")
-                if "EMBALAJE COMERCIAL" in norm(str(t[0])):
-                    continue
+
+                titulo = norm(str(t[0][0]) if t[0] and t[0][0] else "")
+                es_comercial = "EMBALAJE COMERCIAL" in titulo
+
                 hdr = [norm(c).replace(" ", "") for c in t[1]]
-                if "ENVASE" in hdr and "EMBALAJE" in hdr and "ETIQUETA" in hdr:
-                    # Verificar que no sea tabla de embalaje comercial por sus headers
+
+                # ORDEN ESPECIFICA
+                if not es_comercial and "ENVASE" in hdr and "EMBALAJE" in hdr and "ETIQUETA" in hdr:
                     if "MIXCALIBRES" in hdr or "CALIBREETIQUETA" in hdr:
                         continue
-                    iE, iB, iT = hdr.index("ENVASE"), hdr.index("EMBALAJE"), hdr.index("ETIQUETA")
+                    iE = hdr.index("ENVASE")
+                    iB = hdr.index("EMBALAJE")
+                    iT = hdr.index("ETIQUETA")
                     iCaj = hdr.index("CAJAS/PALLET") if "CAJAS/PALLET" in hdr else -1
                     iCal = hdr.index("CALIBRES") if "CALIBRES" in hdr else (
                         hdr.index("CALIBRE") if "CALIBRE" in hdr else -1)
                     for r in t[2:]:
                         ev = code(r[iE]) if iE < len(r) else ""
-                        if not ev:
+                        if not ev or len(ev) < 4:
                             continue
-                        # Filtrar códigos que no parecen envases válidos (ej: NAGR, COM-A)
-                        if len(ev) < 4 or not ev[0].isalpha() or ev in ("NAGR","NABPV","NACP"):
-                            continue
-                        kits.append({
+                        orden_especifica.append({
                             "envase": ev,
                             "embalaje": code(r[iB]) if iB < len(r) else "",
                             "etiqueta": norm(r[iT]) if iT < len(r) else "",
                             "calibre": norm(r[iCal]) if 0 <= iCal < len(r) else "",
                             "cajas": numv(r[iCaj]) if 0 <= iCaj < len(r) else None,
                         })
-    return kits
+
+                # EMBALAJE COMERCIAL
+                elif es_comercial and "ENVASE" in hdr and "EMBALAJE" in hdr:
+                    iE = hdr.index("ENVASE")
+                    iB = hdr.index("EMBALAJE")
+                    iT = hdr.index("ETIQUETA") if "ETIQUETA" in hdr else -1
+                    iCaj = hdr.index("CAJAS/PALLET") if "CAJAS/PALLET" in hdr else -1
+                    iCal = hdr.index("MIXCALIBRES") if "MIXCALIBRES" in hdr else -1
+                    for r in t[2:]:
+                        ev = code(r[iE]) if iE < len(r) else ""
+                        if not ev or len(ev) < 3:
+                            continue
+                        embalaje_comercial.append({
+                            "envase": ev,
+                            "embalaje": code(r[iB]) if iB < len(r) else "",
+                            "etiqueta": norm(r[iT]) if 0 <= iT < len(r) else "",
+                            "calibre": norm(r[iCal]) if 0 <= iCal < len(r) else "",
+                            "cajas": numv(r[iCaj]) if 0 <= iCaj < len(r) else None,
+                        })
+
+    return {"orden_especifica": orden_especifica, "embalaje_comercial": embalaje_comercial}
 
 # ---------------- comparacion ----------------
 def review(base, kits):
@@ -205,15 +228,21 @@ up_pdf = st.file_uploader("Instructivo de embalaje", type=["pdf"], key="pdf",
                           label_visibility="collapsed")
 
 if up_pdf is not None and base:
-    kits = extract_kits(up_pdf.read())
-    if not kits:
+    kits_data = extract_kits(up_pdf.read())
+    kits_oe = kits_data["orden_especifica"]
+    kits_ce = kits_data["embalaje_comercial"]
+
+    if not kits_oe and not kits_ce:
         st.error("No pude leer la tabla de órdenes específicas en este PDF. "
                  "¿Es un instructivo en formato GF-IND-PL-003?")
     else:
-        res = review(base, kits)
-        n_ok  = sum(r["estado"] == "OK" for r in res)
-        n_er  = sum(r["estado"] == "ERROR" for r in res)
-        n_wa  = sum(r["estado"] == "ADVERTENCIA" for r in res)
+        res_oe = review(base, kits_oe)
+        res_ce = review(base, kits_ce)
+        res_all = res_oe + res_ce
+
+        n_ok = sum(r["estado"] == "OK" for r in res_all)
+        n_er = sum(r["estado"] == "ERROR" for r in res_all)
+        n_wa = sum(r["estado"] == "ADVERTENCIA" for r in res_all)
 
         c1, c2, c3 = st.columns(3)
         c1.metric("OK", n_ok)
@@ -221,22 +250,34 @@ if up_pdf is not None and base:
         c3.metric("Advertencias", n_wa)
 
         st.divider()
-        for r in res:
-            fields = f'{r["envase"]} · {r["embalaje"]} · {r["etiqueta"] or "—"} · cajas/pallet: {r["cajas"] if r["cajas"] is not None else "—"}'
-            note = f'<div class="note {r["estado"]}">{r["detalle"]}</div>' if r["detalle"] else ""
-            st.markdown(
-                f'<div class="res {r["estado"]}"><div class="rtop">'
-                f'<span class="rid">{r["envase"]} · {r["embalaje"]} · {r["etiqueta"] or "—"}</span>'
-                f'<span class="tag {r["estado"]}">{r["estado"]}</span></div>'
-                f'<div class="rfields">{fields}</div>{note}</div>',
-                unsafe_allow_html=True)
+
+        def render_results(res):
+            for r in res:
+                fields = f'{r["envase"]} · {r["embalaje"]} · {r["etiqueta"] or "—"} · cajas/pallet: {r["cajas"] if r["cajas"] is not None else "—"}'
+                note = f'<div class="note {r["estado"]}">{r["detalle"]}</div>' if r["detalle"] else ""
+                st.markdown(
+                    f'<div class="res {r["estado"]}"><div class="rtop">'
+                    f'<span class="rid">{r["envase"]} · {r["embalaje"]} · {r["etiqueta"] or "—"}</span>'
+                    f'<span class="tag {r["estado"]}">{r["estado"]}</span></div>'
+                    f'<div class="rfields">{fields}</div>{note}</div>',
+                    unsafe_allow_html=True)
+
+        if res_oe:
+            st.markdown("**📋 Orden Específica**")
+            render_results(res_oe)
+
+        if res_ce:
+            st.divider()
+            st.markdown("**📦 Embalaje Comercial**")
+            render_results(res_ce)
 
         # exportar a Excel
         df = pd.DataFrame([{
+            "Sección": "Orden Específica" if r in res_oe else "Embalaje Comercial",
             "Envase": r["envase"], "Embalaje": r["embalaje"], "Etiqueta": r["etiqueta"],
             "Calibre": r["calibre"], "Cajas/pallet": r["cajas"],
             "Estado": r["estado"], "Detalle": r["detalle"],
-        } for r in res])
+        } for r in res_all])
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as w:
             df.to_excel(w, index=False, sheet_name="Revisión")
